@@ -5,6 +5,7 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: ruralconnect_db
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ruralconnect
       POSTGRES_PASSWORD: ruralconnect_dev
@@ -21,10 +22,11 @@ services:
     networks:
       - ruralconnect-network
 
-  # Redis Cache (for sessions, real-time, caching)
+  # Redis Cache & Real-Time Stream
   redis:
     image: redis:7-alpine
     container_name: ruralconnect_redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
     volumes:
@@ -37,17 +39,18 @@ services:
     networks:
       - ruralconnect-network
 
-  # API Service
+  # Backend NestJS API
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
     container_name: ruralconnect_api
+    restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://ruralconnect:ruralconnect_dev@postgres:5432/ruralconnect
       REDIS_URL: redis://redis:6379
-      NODE_ENV: development
-      API_PORT: 3001
+      NODE_ENV: production
+      PORT: 3001
     ports:
       - "3001:3001"
     depends_on:
@@ -55,32 +58,26 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./apps/api:/app
-      - /app/node_modules
     networks:
       - ruralconnect-network
-    command: npm run dev
 
-  # Web Service
+  # Next.js 14 Frontend Web Application
   web:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/web/Dockerfile
     container_name: ruralconnect_web
+    restart: unless-stopped
     environment:
       NEXT_PUBLIC_API_URL: http://localhost:3001
-      NODE_ENV: development
+      NODE_ENV: production
+      PORT: 3000
     ports:
       - "3000:3000"
     depends_on:
       - api
-    volumes:
-      - ./apps/web:/app
-      - /app/node_modules
     networks:
       - ruralconnect-network
-    command: npm run dev
 
 volumes:
   postgres_data:
