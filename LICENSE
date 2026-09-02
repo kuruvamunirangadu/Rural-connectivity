@@ -1,6 +1,10 @@
 MIT License
 
+<<<<<<< HEAD
 Copyright (c) 2026 KURUVA MUNIRANGADU
+=======
+Copyright (c) 2024 RuralConnect
+>>>>>>> 0916e13 (feat: complete rural connectivity agricultural grid platform with role-segregated UI, deterministic matching engine, and 13-milestone test suite)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

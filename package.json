@@ -1,0 +1,41 @@
+{
+  "name": "ruralconnect",
+  "version": "1.0.0",
+  "description": "Rural connectivity platform connecting farmers and service providers",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:api": "turbo run dev --filter=@ruralconnect/api",
+    "dev:web": "turbo run dev --filter=@ruralconnect/web",
+    "build": "turbo run build",
+    "build:api": "turbo run build --filter=@ruralconnect/api",
+    "build:web": "turbo run build --filter=@ruralconnect/web",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "type-check": "turbo run type-check",
+    "db:setup": "cd packages/database && npx prisma migrate dev",
+    "db:reset": "cd packages/database && npx prisma migrate reset",
+    "db:seed": "cd packages/database && npx ts-node prisma/seed.ts",
+    "db:studio": "cd packages/database && npx prisma studio",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f",
+    "prepare": "husky install"
+  },
+  "devDependencies": {
+    "turbo": "^1.10.0",
+    "typescript": "^5.0.0",
+    "eslint": "^8.40.0",
+    "prettier": "^2.8.0",
+    "husky": "^8.0.0",
+    "lint-staged": "^13.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+yarn.lock
+package-lock.json
+pnpm-lock.yaml
+
+# Testing
+coverage/
+.nyc_output/
+
+# Production
+dist/
+build/
+out/
+.next/
+
+# Miscellaneous
+.DS_Store
+*.pem
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.env.example.local
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Turbo
+.turbo/
+.turborc
+
+# Database
+*.db
+*.sqlite
+
+# Prisma
+.prisma/
+
+# Mobile
+node_modules/
+.gradle/
+build/
+*.keystore
+*.jks
+.env.local
+.env.production.local
+Pods/
+
+# Docker
+.docker/

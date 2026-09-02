@@ -1,0 +1,654 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ----------------------------------------------------
+// Enums
+// ----------------------------------------------------
+
+enum RoleType {
+  FARMER
+  CONTRACTOR
+  TRACTOR_OWNER
+  SKILLED_WORKER
+  EQUIPMENT_OWNER
+  SUPPLIER
+  // Future roles (Phase 2+)
+  DRIVER
+  MECHANIC
+  SERVICE_PROVIDER
+  BUYER
+  ADMIN
+  FIELD_AGENT
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  GOLD
+  PLATINUM
+}
+
+enum ResourceType {
+  TRACTOR
+  WORKER
+  EQUIPMENT
+}
+
+enum AvailabilityStatus {
+  AVAILABLE
+  BOOKED
+  MAINTENANCE
+  UNAVAILABLE
+}
+
+enum EquipmentType {
+  SPRAYER
+  PUMP
+  WATER_PUMP
+  AGRICULTURAL_MACHINE
+  OTHER
+}
+
+enum LandType {
+  IRRIGATED
+  DRYLAND
+  WETLAND
+  MIXED
+}
+
+enum IrrigationType {
+  BOREWELL
+  CANAL
+  DRIP
+  SPRINKLER
+  RAIN_FED
+  OTHER
+}
+
+enum TractorCategory {
+  COMPACT
+  MEDIUM
+  HEAVY
+}
+
+enum AttachmentType {
+  ROTAVATOR
+  CULTIVATOR
+  PLOUGH
+  SEED_DRILL
+  TRAILER
+  LEVELLER
+  HARROW
+  THRESHER
+  SPRAYER
+  OTHER
+}
+
+enum InputProductCategory {
+  FERTILIZERS
+  SEEDS
+  CROP_PROTECTION
+  MICRONUTRIENTS
+  AGRICULTURAL_SUPPLIES
+}
+
+enum RequestStatus {
+  OPEN
+  MATCHED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum BookingStatus {
+  REQUESTED
+  MATCHED
+  QUOTED
+  ACCEPTED
+  SCHEDULED
+  WORK_STARTED
+  WORK_COMPLETED
+  PAYMENT
+  RATING
+  CLOSED
+  CANCELLED
+  DISPUTED
+  NO_SHOW
+  RESCHEDULED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  UPI
+  BANK_TRANSFER
+  WALLET
+  CASH
+  CARD
+}
+
+enum CommunicationChannel {
+  IN_APP
+  SMS
+  WHATSAPP
+  IVR_AGENT
+}
+
+// ----------------------------------------------------
+// 0. Location & Spatial Master
+// ----------------------------------------------------
+
+model Location {
+  id        String   @id @default(uuid())
+  village   String
+  mandal    String
+  district  String
+  state     String   @default("Telangana")
+  pincode   String?
+  latitude  Float
+  longitude Float
+  createdAt DateTime @default(now())
+
+  farms             Farm[]
+  projects          Project[]
+  supplierProfiles  SupplierProfile[]
+  equipment         Equipment[]
+  workRequests      WorkRequest[]
+
+  @@index([district, mandal, village])
+  @@index([latitude, longitude])
+}
+
+// ----------------------------------------------------
+// 1. Users, User Roles & Current Preferences (Sections 11 & 12)
+// ----------------------------------------------------
+
+model User {
+  id                 String             @id @default(uuid())
+  phone              String             @unique
+  name               String
+  email              String?            @unique
+  status             String             @default("active") // active, suspended, pending
+  profileImageUrl    String?
+  verificationTier   Int                @default(0) // 0: Mobile, 1: Identity, 2: Document, 3: History, 4: Trusted
+  rating             Float              @default(0.0)
+  totalRatingsCount  Int                @default(0)
+  disputeCount       Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  // Multi-Role & Preferences (User != Role)
+  roles              UserRoleEntry[]
+  preference         UserPreference?
+
+  // Specific Persona Profiles
+  farmerProfile      FarmerProfile?
+  contractorProfile  ContractorProfile?
+  tractorOwner       TractorOwnerProfile?
+  skilledWorker      WorkerProfile?
+  equipmentOwner     EquipmentOwnerProfile?
+  supplierProfile    SupplierProfile?
+
+  // Audits & Reviews
+  reviewsGiven       Rating[]           @relation("ReviewsGiven")
+  reviewsReceived    Rating[]           @relation("ReviewsReceived")
+  communicationLogs  CommunicationLog[]
+}
+
+model UserRoleEntry {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      RoleType
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@unique([userId, role])
+  @@index([userId])
+  @@index([role])
+}
+
+model UserPreference {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentRole       RoleType @default(FARMER)
+  preferredLanguage String   @default("Telugu")
+  theme             String   @default("light")
+  updatedAt         DateTime @updatedAt
+}
+
+// ----------------------------------------------------
+// 2. Farmer Database & Farms (Section 13)
+// ----------------------------------------------------
+
+model FarmerProfile {
+  id                String          @id @default(uuid())
+  userId            String          @unique
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  preferredLanguage String          @default("Telugu")
+  experienceYears   Int             @default(0)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  farms             Farm[]
+}
+
+
+model Farm {
+  id             String         @id @default(uuid())
+  farmerId       String
+  farmer         FarmerProfile  @relation(fields: [farmerId], references: [id], onDelete: Cascade)
+  name           String         // e.g. "North Field", "Village Borewell Plot"
+  area           Float          // e.g. 4.0
+  areaUnit       String         @default("acres")
+  locationId     String
+  location       Location       @relation(fields: [locationId], references: [id])
+  crop           String         // e.g. "Cotton", "Paddy"
+  irrigationType IrrigationType @default(BOREWELL)
+  landType       LandType       @default(IRRIGATED)
+  surveyNumber   String?
+  createdAt      DateTime       @default(now())
+
+  @@index([farmerId])
+  @@index([locationId])
+}
+
+// ----------------------------------------------------
+// 3. Contractor Database & Projects (Section 14)
+// ----------------------------------------------------
+
+model ContractorProfile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName       String             // e.g. "Sri Sai Agri Contracting"
+  experienceYears    Int                @default(0)
+  serviceRadius      Float              @default(25.0) // km
+  description        String?
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  rating             Float              @default(0.0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  projects           Project[]
+}
+
+model Project {
+  id                    String                         @id @default(uuid())
+  contractorId          String
+  contractor            ContractorProfile              @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  title                 String                         // e.g. "Village X agricultural operation"
+  description           String?
+  locationId            String
+  location              Location                       @relation(fields: [locationId], references: [id])
+  totalAcreage          Float                          @default(50.0)
+  startDate             DateTime
+  endDate               DateTime
+  status                String                         @default("open") // open, in_progress, completed, cancelled
+  fulfillmentPercentage Float                          @default(0.0)
+  createdAt             DateTime                       @default(now())
+  updatedAt             DateTime                       @updatedAt
+
+  requirements          ProjectRequirement[]
+
+  @@index([contractorId])
+  @@index([locationId])
+  @@index([status])
+}
+
+model ProjectRequirement {
+  id                String   @id @default(uuid())
+  projectId         String
+  project           Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  category          String   // "tractor", "worker", "sprayer", "equipment"
+  specName          String   // e.g. "50 HP Tractor", "Sprayer Operator"
+  quantityRequired  Int      @default(1)
+  quantityFulfilled Int      @default(0)
+  unitRateBudget    Float    @default(0.0)
+
+  @@index([projectId])
+}
+
+// ----------------------------------------------------
+// 4. Tractor Owner, Tractors & Attachments (Sections 15 & 16)
+// ----------------------------------------------------
+
+model TractorOwnerProfile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  rating             Float              @default(0.0)
+  completedJobs      Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  tractors           Tractor[]
+}
+
+model Tractor {
+  id                 String              @id @default(uuid())
+  ownerId            String
+  owner              TractorOwnerProfile @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  registrationNumber String?             @unique // e.g. "TS34AB1234"
+  brand              String?             // e.g. "Mahindra", "John Deere", "Swaraj"
+  model              String?             // e.g. "Arjun 550 DI"
+  hp                 Int?                // e.g. 50, 45, 35
+  manufacturingYear  Int?                // purchase / manufacturing year
+  year               Int?                // alias for manufacturing year
+  condition          String?             @default("good") // excellent, good, fair
+  verificationStatus VerificationStatus  @default(UNVERIFIED)
+  status             String              @default("ACTIVE") // ACTIVE, maintenance, retired
+  baseRatePerAcre    Float?              @default(950.0)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  attachments        TractorAttachment[]
+
+  @@index([ownerId])
+  @@index([hp])
+}
+
+model TractorAttachment {
+  id             String         @id @default(uuid())
+  tractorId      String
+  tractor        Tractor        @relation(fields: [tractorId], references: [id], onDelete: Cascade)
+  attachmentType AttachmentType // ROTAVATOR, CULTIVATOR, PLOUGH, TRAILER, SEED_DRILL
+  brand          String?
+  condition      String?        @default("good")
+  status         String         @default("ACTIVE")
+  perAcreRate    Float?         @default(350.0)
+  createdAt      DateTime       @default(now())
+
+  @@index([tractorId])
+  @@index([attachmentType])
+}
+
+// ----------------------------------------------------
+// 5. Skilled Workers, Skills & Worker Skills (Section 17)
+// ----------------------------------------------------
+
+model WorkerProfile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  experienceYears    Int?               @default(0)
+  serviceRadiusKm    Float?             @default(10.0) // km
+  serviceRadius      Float?             @default(10.0) // km
+  expectedDailyRate  Float?             @default(550.0) // INR
+  dailyRate          Float?             @default(550.0) // INR
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  rating             Float              @default(0.0)
+  completedJobs      Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  skills             WorkerSkill[]
+}
+
+model Skill {
+  id       String        @id @default(uuid())
+  name     String        @unique // e.g. "Tractor Operator", "Sprayer Operator", "Pump Technician"
+  category String        // e.g. "Machinery Operation", "Crop Care", "Irrigation"
+
+  workers  WorkerSkill[]
+}
+
+model WorkerSkill {
+  id              String        @id @default(uuid())
+  workerId        String
+  worker          WorkerProfile @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  skillId         String
+  skill           Skill         @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  experienceYears Int?          @default(1)
+
+  @@unique([workerId, skillId])
+  @@index([workerId])
+  @@index([skillId])
+}
+
+// ----------------------------------------------------
+// 6. Generic Equipment & Equipment Owners (Section 18)
+// ----------------------------------------------------
+
+model EquipmentOwnerProfile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  experienceYears    Int?               @default(0)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  rating             Float              @default(0.0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  equipment          Equipment[]
+}
+
+model Equipment {
+  id               String                @id @default(uuid())
+  ownerId          String
+  owner            EquipmentOwnerProfile @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  type             EquipmentType         @default(OTHER) // SPRAYER, PUMP, WATER_PUMP, OTHER
+  equipmentType    EquipmentType         @default(OTHER)
+  brand            String?               // e.g. "Aspee", "Kirloskar", "Neptune"
+  model            String?               // e.g. "HTP-35", "BS-16"
+  capacity         String?               // e.g. "35 LPM", "7.5 HP", "16 Litres"
+  condition        String?               @default("good")
+  locationId       String?
+  location         Location?             @relation(fields: [locationId], references: [id])
+  rentalRatePerDay Float?                @default(1200.0)
+  status           String                @default("ACTIVE")
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  @@index([ownerId])
+  @@index([equipmentType])
+}
+
+// ----------------------------------------------------
+// 7. Supplier & Products (Section 19)
+// ----------------------------------------------------
+
+model SupplierProfile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  businessName       String             // e.g. "Sri Venkateshwara Agri Inputs"
+  shopName           String
+  locationId         String
+  location           Location           @relation(fields: [locationId], references: [id])
+  fertilizerLicense  String?
+  seedLicense        String?
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  products           Product[]
+
+  @@index([locationId])
+}
+
+model Product {
+  id          String               @id @default(uuid())
+  supplierId  String
+  supplier    SupplierProfile      @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  name        String               // e.g. "Urea (Neem Coated)", "Cotton Seed Hybrid"
+  category    InputProductCategory
+  unit        String               // "50 kg bag", "1 Litre bottle"
+  price       Float                // e.g. 266.50
+  stockStatus String               @default("in_stock") // in_stock, low_stock, out_of_stock
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@index([supplierId])
+  @@index([category])
+}
+
+// ----------------------------------------------------
+// 8. Unified Common Availability Engine (Section 20)
+// ----------------------------------------------------
+
+model Availability {
+  id           String             @id @default(uuid())
+  resourceType ResourceType       // TRACTOR, WORKER, EQUIPMENT
+  resourceId   String             // ID of Tractor, WorkerProfile, or Equipment
+  date         DateTime           // Date of availability slot
+  startTime    String             @default("07:00")
+  endTime      String             @default("17:00")
+  status       AvailabilityStatus @default(AVAILABLE)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([resourceType, resourceId])
+  @@index([date, status])
+}
+
+// ----------------------------------------------------
+// 9. Work Requests, Work Requirements & Bookings (Sections 21–25)
+// ----------------------------------------------------
+
+model WorkRequest {
+  id            String            @id @default(uuid())
+  referenceCode String            @unique // e.g. "TRW-000124", "REQ-1001"
+  createdBy     String
+  requestType   String            // "TRACTOR_WORK", "SKILLED_WORKER", "SPRAY_PUMP", "CONTRACTOR_WORK"
+  locationId    String
+  location      Location          @relation(fields: [locationId], references: [id])
+  requestedDate DateTime
+  startTime     String            @default("07:00")
+  endTime       String            @default("17:00")
+  status        RequestStatus     @default(OPEN)
+  description   String?
+  createdAt     DateTime          @default(now())
+
+  requirements  WorkRequirement[]
+  bookings      Booking[]
+
+  @@index([status])
+  @@index([referenceCode])
+  @@index([locationId])
+}
+
+model WorkRequirement {
+  id             String          @id @default(uuid())
+  requestId      String
+  request        WorkRequest     @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  resourceType   ResourceType    // TRACTOR, WORKER, EQUIPMENT
+  quantity       Int             @default(1)
+  skillId        String?
+  equipmentType  EquipmentType?
+  tractorHpMin   Int?            // e.g. 45 HP
+  attachmentType AttachmentType? // e.g. ROTAVATOR, PLOUGH
+
+  @@index([requestId])
+}
+
+model Booking {
+  id            String        @id @default(uuid())
+  referenceCode String        @unique // e.g. "BKG-000124"
+  requestId     String?
+  request       WorkRequest?  @relation(fields: [requestId], references: [id])
+  providerId    String        // User ID or Profile ID of provider
+  providerType  RoleType      // TRACTOR_OWNER, SKILLED_WORKER, EQUIPMENT_OWNER, CONTRACTOR
+  customerId    String        // User ID of customer (Farmer or Contractor)
+  customerType  RoleType      // FARMER, CONTRACTOR
+  scheduledDate DateTime
+  startTime     String        @default("07:00")
+  endTime       String        @default("17:00")
+  agreedPrice   Float         // Total agreed price INR
+  status        BookingStatus @default(REQUESTED) // REQUESTED, SCHEDULED, ARRIVED, WORK_STARTED, WORK_COMPLETED, CONFIRMED
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  payment       Payment?
+  rating        Rating?
+  workSessions  WorkSession[]
+  disputes      Dispute[]
+
+  @@index([providerId])
+  @@index([customerId])
+  @@index([status])
+}
+
+model WorkSession {
+  id           String    @id @default(uuid())
+  bookingId    String
+  booking      Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  actualHours  Float?
+  actualArea   Float?    // acres
+  notes        String?
+  status       String    @default("started") // started, completed, confirmed
+
+  @@index([bookingId])
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  bookingId     String        @unique
+  booking       Booking       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  amount        Float
+  status        PaymentStatus @default(PENDING)
+  paymentMethod PaymentMethod @default(UPI)
+  transactionId String?       @unique
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+model Rating {
+  id         String   @id @default(uuid())
+  bookingId  String   @unique
+  booking    Booking  @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  fromUserId String
+  fromUser   User     @relation("ReviewsGiven", fields: [fromUserId], references: [id])
+  toUserId   String
+  toUser     User     @relation("ReviewsReceived", fields: [toUserId], references: [id])
+  rating     Float    // e.g. 4.7
+  review     String?  // Review comment
+  createdAt  DateTime @default(now())
+
+  @@index([fromUserId])
+  @@index([toUserId])
+}
+
+model Dispute {
+  id             String    @id @default(uuid())
+  bookingId      String
+  booking        Booking   @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  raisedByUserId String
+  reason         String    // "no_show", "incomplete_work", "rate_dispute"
+  description    String
+  status         String    @default("open")
+  refundAmount   Float?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([bookingId])
+}
+
+model CommunicationLog {
+  id             String               @id @default(uuid())
+  recipientId    String
+  recipient      User                 @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  channel        CommunicationChannel @default(SMS)
+  title          String
+  body           String
+  referenceCode  String?
+  timestamp      DateTime             @default(now())
+
+  @@index([recipientId])
+}
