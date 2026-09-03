@@ -3,7 +3,7 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN npm install -g pnpm@9.15.4
 
 # Copy root workspace configuration
 COPY package.json pnpm-workspace.yaml turbo.json ./
@@ -19,14 +19,10 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
-
-COPY package.json pnpm-workspace.yaml ./
-COPY packages/ ./packages/
-COPY apps/api/package.json ./apps/api/
-
-RUN pnpm install --prod --frozen-lockfile=false
-
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
 ENV NODE_ENV=production
@@ -36,3 +32,4 @@ EXPOSE 3001
 
 WORKDIR /app/apps/api
 CMD ["node", "dist/main.js"]
+
