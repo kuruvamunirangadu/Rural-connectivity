@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">RuralConnect</string>
+    <string name="title_activity_main">RuralConnect</string>
+    <string name="package_name">com.ruralconnect.app</string>
+    <string name="custom_url_scheme">com.ruralconnect.app</string>
+</resources>
