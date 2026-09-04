@@ -59,6 +59,8 @@ Thumbs.db
 node_modules/
 .gradle/
 build/
+*.apk
+*.aab
 *.keystore
 *.jks
 .env.local
