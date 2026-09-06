@@ -265,6 +265,14 @@ model User {
   advisoriesReceived       Advisory[]             @relation("UserAdvisories")
   fieldVisitsConducting    FieldVisit[]           @relation("OfficerFieldVisits")
   translationsReviewed     KnowledgeTranslation[] @relation("ReviewedTranslations")
+
+  // Rural Financial Infrastructure & Credit Readiness (Milestone 18)
+  financialProfile         FinancialProfile?
+  incomeRecords            IncomeRecord[]
+  expenseRecords           ExpenseRecord[]
+  financialConsents        FinancialConsent[]
+  creditProfile            CreditProfile?
+  financingRequests        FinancingRequest[]
 }
 
 model UserRoleEntry {
@@ -326,6 +334,7 @@ model Farm {
   advisories         Advisory[]
   fieldVisits        FieldVisit[]
   cropKnowledgeLinks CropKnowledge[]
+  financialPeriods   FarmFinancialPeriod[]
 
   @@index([farmerId])
   @@index([locationId])
@@ -2088,6 +2097,358 @@ model KnowledgeGap {
   @@index([query])
   @@index([status])
 }
+
+// ----------------------------------------------------
+// 18. Rural Financial Infrastructure & Credit Readiness (Milestone 18)
+// ----------------------------------------------------
+
+enum ConsentPurpose {
+  FINANCIAL_PROFILE
+  CREDIT_ASSESSMENT
+  LENDER_DATA_SHARING
+  INCOME_VERIFICATION
+  TRANSACTION_ANALYSIS
+}
+
+enum ConsentStatus {
+  PENDING
+  GRANTED
+  REVOKED
+  EXPIRED
+}
+
+enum FinancialProfileStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum IncomeSourceType {
+  PRODUCE_SALE
+  SERVICE_EARNING
+  CONTRACTOR_REVENUE
+  SUPPLIER_SALE
+  OTHER
+}
+
+enum ExpenseCategory {
+  TRACTOR_SERVICE
+  WORKER_SERVICE
+  INPUT_PURCHASE
+  TRANSPORT
+  EQUIPMENT
+  OTHER
+}
+
+enum RecordStatus {
+  RECORDED
+  VERIFIED
+  RECONCILED
+  DISPUTED
+  CANCELLED
+}
+
+enum CreditIndicatorType {
+  TRANSACTION_HISTORY
+  INCOME_STABILITY
+  SALES_ACTIVITY
+  SERVICE_ACTIVITY
+  PAYMENT_RELIABILITY
+  SETTLEMENT_HISTORY
+  PROFILE_VERIFICATION
+  DISPUTE_ACTIVITY
+}
+
+enum IndicatorRating {
+  EXCELLENT
+  STRONG
+  MODERATE
+  LIMITED
+  INSUFFICIENT_DATA
+}
+
+enum FinancialPartnerType {
+  BANK
+  NBFC
+  COOPERATIVE
+  MICROFINANCE
+  INSURANCE_PROVIDER
+  OTHER_REGULATED_ENTITY
+}
+
+enum FinancingPurpose {
+  INPUT_PURCHASE
+  EQUIPMENT
+  TRACTOR
+  WORKING_CAPITAL
+  CROP_ACTIVITY
+  TRANSPORT
+  OTHER
+}
+
+enum FinancingStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  ADDITIONAL_INFO_REQUIRED
+  APPROVED
+  REJECTED
+  CANCELLED
+  EXPIRED
+}
+
+enum RepaymentStatus {
+  UPCOMING
+  DUE
+  PAID
+  OVERDUE
+  WAIVED
+}
+
+model FinancialProfile {
+  id                   String                 @id @default(uuid())
+  userId               String                 @unique
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currency             String                 @default("INR")
+  profileStatus        FinancialProfileStatus @default(ACTIVE)
+  totalIncome          Float                  @default(0.0)
+  totalExpense         Float                  @default(0.0)
+  netPlatformActivity  Float                  @default(0.0)
+  lastCalculatedAt     DateTime               @default(now())
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+
+  incomeRecords        IncomeRecord[]
+  expenseRecords       ExpenseRecord[]
+  creditProfile        CreditProfile?
+
+  @@index([userId])
+  @@index([profileStatus])
+}
+
+model IncomeRecord {
+  id            String           @id @default(uuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId     String?
+  profile       FinancialProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  sourceType    IncomeSourceType @default(PRODUCE_SALE)
+  referenceType String?          // e.g. "ProduceOrder", "Settlement", "WorkOffer"
+  referenceId   String?
+  amount        Float
+  currency      String           @default("INR")
+  date          DateTime         @default(now())
+  status        RecordStatus     @default(RECORDED)
+  description   String?
+  createdAt     DateTime         @default(now())
+
+  @@index([userId])
+  @@index([sourceType])
+  @@index([date])
+}
+
+model ExpenseRecord {
+  id            String           @id @default(uuid())
+  userId        String
+  user          User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  profileId     String?
+  profile       FinancialProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+  category      ExpenseCategory  @default(TRACTOR_SERVICE)
+  referenceType String?          // e.g. "Booking", "InputOrder", "TransportBooking"
+  referenceId   String?
+  amount        Float
+  currency      String           @default("INR")
+  date          DateTime         @default(now())
+  status        RecordStatus     @default(RECORDED)
+  description   String?
+  createdAt     DateTime         @default(now())
+
+  @@index([userId])
+  @@index([category])
+  @@index([date])
+}
+
+model FarmFinancialPeriod {
+  id           String    @id @default(uuid())
+  farmId       String
+  farm         Farm      @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  seasonName   String    // e.g. "Kharif 2025-26", "Rabi 2025-26"
+  cropName     String
+  startDate    DateTime
+  endDate      DateTime?
+  totalIncome  Float     @default(0.0)
+  totalExpense Float     @default(0.0)
+  netMargin    Float     @default(0.0)
+  status       String    @default("ACTIVE") // ACTIVE, CLOSED
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([farmId])
+  @@index([seasonName])
+}
+
+model FinancialConsent {
+  id           String         @id @default(uuid())
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose      ConsentPurpose @default(CREDIT_ASSESSMENT)
+  scope        String         // JSON string of granted scopes: ["TRANSACTIONS", "PRODUCE_SALES", "EARNINGS"]
+  status       ConsentStatus  @default(GRANTED)
+  partnerId    String?
+  partner      FinancialPartner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  grantedAt    DateTime       @default(now())
+  revokedAt    DateTime?
+  expiresAt    DateTime
+  version      Int            @default(1)
+  auditLog     String?        @db.Text
+
+  applications FinancingApplication[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([partnerId])
+}
+
+model CreditProfile {
+  id                   String           @id @default(uuid())
+  userId               String           @unique
+  user                 User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  financialProfileId   String?          @unique
+  financialProfile     FinancialProfile? @relation(fields: [financialProfileId], references: [id], onDelete: SetNull)
+  status               String           @default("ACTIVE")
+  overallGrade         IndicatorRating  @default(STRONG)
+  summaryNotes         String?          @db.Text
+  lastCalculatedAt     DateTime         @default(now())
+  version              Int              @default(1)
+
+  indicators           CreditIndicator[]
+
+  @@index([userId])
+  @@index([overallGrade])
+}
+
+model CreditIndicator {
+  id              String              @id @default(uuid())
+  creditProfileId String
+  creditProfile   CreditProfile       @relation(fields: [creditProfileId], references: [id], onDelete: Cascade)
+  indicatorType   CreditIndicatorType
+  rating          IndicatorRating     @default(STRONG)
+  valueScore      Float               @default(85.0) // 0 - 100 benchmark
+  rationale       String
+  dataSource      String              // e.g. "Platform verified transactions"
+  calculatedAt    DateTime            @default(now())
+
+  @@index([creditProfileId])
+  @@index([indicatorType])
+}
+
+model FinancialPartner {
+  id                 String               @id @default(uuid())
+  partnerType        FinancialPartnerType @default(BANK)
+  name               String               // e.g. "State Bank of India (Agri Division)"
+  registrationNumber String?
+  verificationStatus VerificationStatus   @default(VERIFIED)
+  status             String               @default("ACTIVE")
+  apiEndpoint        String?
+  contactEmail       String?
+  createdAt          DateTime             @default(now())
+
+  consents           FinancialConsent[]
+  products           FinancingProduct[]
+  requests           FinancingRequest[]
+  applications       FinancingApplication[]
+
+  @@index([partnerType])
+  @@index([verificationStatus])
+}
+
+model FinancingProduct {
+  id                     String           @id @default(uuid())
+  partnerId              String
+  partner                FinancialPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  name                   String           // e.g. "Kisan Agri Working Capital"
+  code                   String           @unique
+  purpose                FinancingPurpose @default(WORKING_CAPITAL)
+  minAmount              Float            @default(10000)
+  maxAmount              Float            @default(500000)
+  currency               String           @default("INR")
+  minTenureMonths        Int              @default(3)
+  maxTenureMonths        Int              @default(36)
+  indicativeInterestRate Float            @default(7.5) // Indicative annual interest %
+  status                 String           @default("ACTIVE")
+  createdAt              DateTime         @default(now())
+
+  applications           FinancingApplication[]
+
+  @@index([partnerId])
+  @@index([purpose])
+}
+
+model FinancingRequest {
+  id                    String            @id @default(uuid())
+  userId                String
+  user                  User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  partnerId             String?
+  partner               FinancialPartner? @relation(fields: [partnerId], references: [id], onDelete: SetNull)
+  purpose               FinancingPurpose  @default(INPUT_PURCHASE)
+  requestedAmount       Float
+  currency              String            @default("INR")
+  requestedTenureMonths Int               @default(12)
+  status                FinancingStatus   @default(DRAFT)
+  farmId                String?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  application           FinancingApplication?
+
+  @@index([userId])
+  @@index([status])
+  @@index([partnerId])
+}
+
+model FinancingApplication {
+  id                   String           @id @default(uuid())
+  financingRequestId   String           @unique
+  financingRequest     FinancingRequest @relation(fields: [financingRequestId], references: [id], onDelete: Cascade)
+  productId            String
+  product              FinancingProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  partnerId            String
+  partner              FinancialPartner @relation(fields: [partnerId], references: [id], onDelete: Cascade)
+  consentId            String
+  consent              FinancialConsent @relation(fields: [consentId], references: [id], onDelete: Cascade)
+  applicationNumber    String           @unique
+  submittedAt          DateTime         @default(now())
+  status               FinancingStatus  @default(SUBMITTED)
+  externalReference    String?
+  approvedAmount       Float?
+  interestRatePerAnnum Float?
+  tenureMonths         Int?
+  decisionNotes        String?          @db.Text
+
+  repayments           FinancingRepayment[]
+
+  @@index([partnerId])
+  @@index([status])
+  @@index([applicationNumber])
+}
+
+model FinancingRepayment {
+  id                String               @id @default(uuid())
+  applicationId     String
+  application       FinancingApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  installmentNumber Int
+  dueDate           DateTime
+  amount            Float
+  currency          String               @default("INR")
+  status            RepaymentStatus      @default(UPCOMING)
+  paidAt            DateTime?
+  externalReference String?
+  receiptUrl        String?
+
+  @@index([applicationId])
+  @@index([status])
+}
+
 
 
 
