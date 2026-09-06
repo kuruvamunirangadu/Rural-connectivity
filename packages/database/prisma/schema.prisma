@@ -256,6 +256,15 @@ model User {
   produceOrdersSold        ProduceOrder[]         @relation("SellerProduceOrders")
   inspectionsConducted     ProduceInspection[]    @relation("InspectedBy")
   qualityTestsConducted    ProduceQuality[]       @relation("QualityTestedBy")
+
+  // Agricultural Knowledge, Advisory & Extension (Milestone 17)
+  authoredArticles         KnowledgeArticle[]     @relation("AuthoredArticles")
+  reviewedArticles         KnowledgeArticle[]     @relation("ReviewedArticles")
+  articleReviews           KnowledgeReview[]      @relation("ReviewerReviews")
+  articleVersions          KnowledgeArticleVersion[] @relation("VersionCreatedBy")
+  advisoriesReceived       Advisory[]             @relation("UserAdvisories")
+  fieldVisitsConducting    FieldVisit[]           @relation("OfficerFieldVisits")
+  translationsReviewed     KnowledgeTranslation[] @relation("ReviewedTranslations")
 }
 
 model UserRoleEntry {
@@ -297,7 +306,6 @@ model FarmerProfile {
   farms             Farm[]
 }
 
-
 model Farm {
   id             String         @id @default(uuid())
   farmerId       String
@@ -313,8 +321,11 @@ model Farm {
   surveyNumber   String?
   createdAt      DateTime       @default(now())
 
-  organizationFarms OrganizationFarm[]
-  produceListings   ProduceListing[]
+  organizationFarms  OrganizationFarm[]
+  produceListings    ProduceListing[]
+  advisories         Advisory[]
+  fieldVisits        FieldVisit[]
+  cropKnowledgeLinks CropKnowledge[]
 
   @@index([farmerId])
   @@index([locationId])
@@ -1726,6 +1737,356 @@ model DeliveryConfirmation {
 
   @@index([tripId])
   @@index([confirmedById])
+}
+
+// ----------------------------------------------------
+// Milestone 17: Agricultural Knowledge, Advisory & Digital Extension
+// ----------------------------------------------------
+
+enum KnowledgeContentType {
+  ARTICLE
+  GUIDE
+  CHECKLIST
+  FAQ
+  VIDEO
+  INFOGRAPHIC
+  SAFETY_NOTICE
+}
+
+enum KnowledgeStatus {
+  DRAFT
+  UNDER_REVIEW
+  APPROVED
+  PUBLISHED
+  ARCHIVED
+  EXPIRED
+}
+
+enum KnowledgeReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+}
+
+enum AdvisoryType {
+  GENERAL
+  FARM_ACTIVITY
+  CROP_STAGE
+  EQUIPMENT
+  INPUT
+  WEATHER
+  MARKETPLACE
+  SAFETY
+  PROGRAM
+}
+
+enum AdvisoryStatus {
+  NEW
+  VIEWED
+  ACKNOWLEDGED
+  DISMISSED
+  EXPIRED
+}
+
+enum SourceType {
+  GOVERNMENT
+  AGRICULTURAL_INSTITUTION
+  UNIVERSITY
+  RESEARCH
+  INTERNAL
+  EXPERT
+  OTHER
+}
+
+enum FieldVisitStatus {
+  PLANNED
+  COMPLETED
+  CANCELLED
+}
+
+enum ObservationCategory {
+  CROP_HEALTH
+  IRRIGATION
+  SOIL
+  PEST
+  DISEASE
+  WEED
+  EQUIPMENT
+  OTHER
+}
+
+enum ObservationSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum KnowledgeGapStatus {
+  OPEN
+  IN_REVIEW
+  CONTENT_CREATED
+  RESOLVED
+}
+
+model KnowledgeCategory {
+  id          String              @id @default(uuid())
+  name        String
+  slug        String              @unique
+  description String?
+  parentId    String?
+  parent      KnowledgeCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    KnowledgeCategory[] @relation("CategoryHierarchy")
+  status      String              @default("ACTIVE")
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  articles    KnowledgeArticle[]
+
+  @@index([slug])
+  @@index([parentId])
+}
+
+model Crop {
+  id             String          @id @default(uuid())
+  name           String          @unique // e.g. "Cotton", "Paddy", "Groundnut", "Chilli"
+  scientificName String?
+  category       String          @default("CASH_CROP") // CEREAL, PULSE, OILSEED, CASH_CROP, HORTICULTURE
+  description    String?
+  status         String          @default("ACTIVE")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  knowledgeLinks CropKnowledge[]
+  activityGuides ActivityGuide[]
+  advisories     Advisory[]
+  knowledgeGaps  KnowledgeGap[]
+}
+
+model KnowledgeArticle {
+  id            String               @id @default(uuid())
+  title         String
+  slug          String               @unique
+  summary       String
+  content       String               @db.Text
+  contentType   KnowledgeContentType @default(ARTICLE)
+  status        KnowledgeStatus      @default(DRAFT)
+  language      String               @default("en") // Primary language
+  categoryId    String?
+  category      KnowledgeCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  authorId      String
+  author        User                 @relation("AuthoredArticles", fields: [authorId], references: [id], onDelete: Cascade)
+  reviewedById  String?
+  reviewedBy    User?                @relation("ReviewedArticles", fields: [reviewedById], references: [id], onDelete: SetNull)
+  publishedAt   DateTime?
+  expiresAt     DateTime?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  sources              ArticleSource[]
+  reviews              KnowledgeReview[]
+  versions             KnowledgeArticleVersion[]
+  translations         KnowledgeTranslation[]
+  cropKnowledge        CropKnowledge[]
+  activityGuides       ActivityGuide[]
+  observationsAttached FieldObservation[]
+  advisoriesAttached   Advisory[]
+
+  @@index([slug])
+  @@index([status])
+  @@index([contentType])
+  @@index([categoryId])
+  @@index([language])
+}
+
+model CropKnowledge {
+  id           String           @id @default(uuid())
+  cropId       String
+  crop         Crop             @relation(fields: [cropId], references: [id], onDelete: Cascade)
+  articleId    String
+  article      KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  stage        String?          // e.g. "LAND_PREP", "SOWING", "FLOWERING", "BOLL_DEVELOPMENT", "HARVEST"
+  activityType String?          // e.g. "SPRAYING", "IRRIGATION", "FERTILIZATION"
+  priority     Int              @default(1)
+  farmId       String?
+  farm         Farm?            @relation(fields: [farmId], references: [id], onDelete: SetNull)
+
+  @@index([cropId])
+  @@index([articleId])
+  @@index([stage])
+}
+
+model ActivityGuide {
+  id           String           @id @default(uuid())
+  activityType String           // e.g. "SPRAYING", "IRRIGATION", "HARVESTING", "TILLING"
+  cropId       String?
+  crop         Crop?            @relation(fields: [cropId], references: [id], onDelete: SetNull)
+  title        String
+  description  String?
+  articleId    String
+  article      KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  sequence     Int              @default(1)
+  isActive     Boolean          @default(true)
+  createdAt    DateTime         @default(now())
+
+  @@index([activityType])
+  @@index([cropId])
+}
+
+model KnowledgeSource {
+  id           String          @id @default(uuid())
+  name         String          // e.g. "PJTSAU Agricultural University"
+  organization String          // e.g. "ICAR / PJTSAU / Govt of Telangana"
+  sourceType   SourceType      @default(AGRICULTURAL_INSTITUTION)
+  reference    String?         // DOI, Bulletin number, Circular ID
+  description  String?
+  status       String          @default("VERIFIED")
+  createdAt    DateTime        @default(now())
+
+  articleCitations ArticleSource[]
+
+  @@index([sourceType])
+}
+
+model ArticleSource {
+  id           String           @id @default(uuid())
+  articleId    String
+  article      KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  sourceId     String
+  source       KnowledgeSource  @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  citationText String           // e.g. "PJTSAU Cotton Package of Practices, Bull. 42 (2025)"
+  referenceUrl String?
+
+  @@index([articleId])
+  @@index([sourceId])
+}
+
+model KnowledgeReview {
+  id          String                @id @default(uuid())
+  articleId   String
+  article     KnowledgeArticle      @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  reviewerId  String
+  reviewer    User                  @relation("ReviewerReviews", fields: [reviewerId], references: [id], onDelete: Cascade)
+  status      KnowledgeReviewStatus @default(PENDING)
+  comments    String?               @db.Text
+  reviewedAt  DateTime              @default(now())
+
+  @@index([articleId])
+  @@index([reviewerId])
+  @@index([status])
+}
+
+model KnowledgeArticleVersion {
+  id          String           @id @default(uuid())
+  articleId   String
+  article     KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  version     Int              @default(1)
+  title       String
+  content     String           @db.Text
+  createdById String
+  createdBy   User             @relation("VersionCreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now())
+
+  @@index([articleId])
+  @@index([version])
+}
+
+model KnowledgeTranslation {
+  id           String           @id @default(uuid())
+  articleId    String
+  article      KnowledgeArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  language     String           // "te", "hi", "ta", "kn"
+  title        String
+  summary      String
+  content      String           @db.Text
+  status       KnowledgeStatus  @default(DRAFT)
+  reviewedById String?
+  reviewedBy   User?            @relation("ReviewedTranslations", fields: [reviewedById], references: [id], onDelete: SetNull)
+  publishedAt  DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([articleId])
+  @@index([language])
+  @@index([status])
+}
+
+model Advisory {
+  id                String           @id @default(uuid())
+  createdForUserId  String
+  createdForUser    User             @relation("UserAdvisories", fields: [createdForUserId], references: [id], onDelete: Cascade)
+  farmId            String?
+  farm              Farm?            @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  cropId            String?
+  crop              Crop?            @relation(fields: [cropId], references: [id], onDelete: SetNull)
+  activityId        String?          // e.g. references farm activity or template
+  attachedArticleId String?
+  attachedArticle   KnowledgeArticle? @relation(fields: [attachedArticleId], references: [id], onDelete: SetNull)
+  type              AdvisoryType     @default(GENERAL)
+  title             String
+  description       String           @db.Text
+  priority          String           @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  status            AdvisoryStatus   @default(NEW)
+  createdAt         DateTime         @default(now())
+  expiresAt         DateTime?
+
+  @@index([createdForUserId])
+  @@index([farmId])
+  @@index([status])
+}
+
+model FieldVisit {
+  id           String             @id @default(uuid())
+  officerId    String
+  officer      User               @relation("OfficerFieldVisits", fields: [officerId], references: [id], onDelete: Cascade)
+  farmId       String
+  farm         Farm               @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  visitDate    DateTime           @default(now())
+  purpose      String             // e.g. "Pre-harvest boll inspection", "Soil health check"
+  notes        String?            @db.Text
+  status       FieldVisitStatus   @default(PLANNED)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  observations FieldObservation[]
+
+  @@index([officerId])
+  @@index([farmId])
+  @@index([status])
+}
+
+model FieldObservation {
+  id                String              @id @default(uuid())
+  fieldVisitId      String
+  fieldVisit        FieldVisit          @relation(fields: [fieldVisitId], references: [id], onDelete: Cascade)
+  category          ObservationCategory @default(CROP_HEALTH)
+  observation       String              @db.Text // Non-diagnosis factual observation
+  severity          ObservationSeverity @default(LOW)
+  photoReference    String?
+  attachedArticleId String?
+  attachedArticle   KnowledgeArticle?   @relation(fields: [attachedArticleId], references: [id], onDelete: SetNull)
+  createdAt         DateTime            @default(now())
+
+  @@index([fieldVisitId])
+  @@index([category])
+  @@index([severity])
+}
+
+model KnowledgeGap {
+  id           String             @id @default(uuid())
+  query        String             // Farmer query that yielded zero results
+  cropId       String?
+  crop         Crop?              @relation(fields: [cropId], references: [id], onDelete: SetNull)
+  activityType String?
+  locationId   String?
+  count        Int                @default(1)
+  status       KnowledgeGapStatus @default(OPEN)
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  @@index([query])
+  @@index([status])
 }
 
 
