@@ -35,6 +35,10 @@ import { DevicesModule } from './devices/devices.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { OperationsModule } from './operations/operations.module';
 import { AIModule } from './ai/ai.module';
+import { OrganizationModule } from './organizations/organization.module';
+import { ProgramModule } from './programs/program.module';
+import { ProcurementModule } from './procurement/procurement.module';
+import { BuyerModule } from './buyers/buyer.module';
 
 @Module({
   imports: [
@@ -59,6 +63,10 @@ import { AIModule } from './ai/ai.module';
     AnalyticsModule,
     OperationsModule,
     AIModule,
+    OrganizationModule,
+    ProgramModule,
+    ProcurementModule,
+    BuyerModule,
     AuthModule,
     UsersModule,
     FarmersModule,

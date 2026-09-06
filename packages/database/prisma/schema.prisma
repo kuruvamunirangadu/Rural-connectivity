@@ -18,13 +18,19 @@ enum RoleType {
   SKILLED_WORKER
   EQUIPMENT_OWNER
   SUPPLIER
-  // Future roles (Phase 2+)
+  // Future & Institutional roles (Section 14)
   DRIVER
   MECHANIC
   SERVICE_PROVIDER
   BUYER
   ADMIN
   FIELD_AGENT
+  FPO
+  COOPERATIVE
+  GOVERNMENT
+  NGO
+  INSTITUTION
+  FIELD_OFFICER
 }
 
 enum VerificationStatus {
@@ -161,11 +167,15 @@ model Location {
   longitude Float
   createdAt DateTime @default(now())
 
-  farms             Farm[]
-  projects          Project[]
-  supplierProfiles  SupplierProfile[]
-  equipment         Equipment[]
-  workRequests      WorkRequest[]
+  farms                Farm[]
+  projects             Project[]
+  supplierProfiles     SupplierProfile[]
+  equipment            Equipment[]
+  workRequests         WorkRequest[]
+  organizations        Organization[]
+  programLocations     ProgramLocation[]
+  procurementRequests  ProcurementRequest[]
+  produceListings      ProduceListing[]
 
   @@index([district, mandal, village])
   @@index([latitude, longitude])
@@ -210,6 +220,14 @@ model User {
   aiConversations    AIConversation[]
   aiRecommendations  AIRecommendation[]
   aiFeedbacks        AIFeedback[]
+
+  // Institutional Network (Milestone 14)
+  organizationMemberships OrganizationMember[]
+  createdOrganizations    Organization[]       @relation("CreatedOrganizations")
+  createdPrograms         Program[]            @relation("CreatedPrograms")
+  programParticipations   ProgramParticipant[]
+  createdProcurements     ProcurementRequest[] @relation("CreatedProcurements")
+  buyerProfile            BuyerProfile?
 }
 
 model UserRoleEntry {
@@ -267,6 +285,9 @@ model Farm {
   surveyNumber   String?
   createdAt      DateTime       @default(now())
 
+  organizationFarms OrganizationFarm[]
+  produceListings   ProduceListing[]
+
   @@index([farmerId])
   @@index([locationId])
 }
@@ -293,8 +314,12 @@ model ContractorProfile {
 
 model Project {
   id                    String                         @id @default(uuid())
-  contractorId          String
-  contractor            ContractorProfile              @relation(fields: [contractorId], references: [id], onDelete: Cascade)
+  contractorId          String?
+  contractor            ContractorProfile?             @relation(fields: [contractorId], references: [id], onDelete: SetNull)
+  organizationId        String?
+  organization          Organization?                  @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  programId             String?
+  program               Program?                       @relation(fields: [programId], references: [id], onDelete: SetNull)
   title                 String                         // e.g. "Village X agricultural operation"
   description           String?
   locationId            String
@@ -310,6 +335,8 @@ model Project {
   requirements          ProjectRequirement[]
 
   @@index([contractorId])
+  @@index([organizationId])
+  @@index([programId])
   @@index([locationId])
   @@index([status])
 }
@@ -482,6 +509,7 @@ model SupplierProfile {
   updatedAt          DateTime           @updatedAt
 
   products           Product[]
+  quotes             SupplierQuote[]
 
   @@index([locationId])
 }
@@ -756,4 +784,303 @@ model AIFeedback {
   @@index([recommendationId])
   @@map("ai_feedbacks")
 }
+
+// ----------------------------------------------------
+// 14. Government, FPO, Cooperative & Institutional Network (Milestone 14)
+// ----------------------------------------------------
+
+enum OrganizationType {
+  FPO
+  COOPERATIVE
+  GOVERNMENT
+  NGO
+  INSTITUTION
+  CUSTOM
+}
+
+enum OrgMembershipRole {
+  ADMIN
+  MANAGER
+  FIELD_OFFICER
+  MEMBER
+  OBSERVER
+}
+
+enum OrgFarmRelationship {
+  OWNED
+  MEMBER_FARM
+  PROGRAM_ATTACHED
+}
+
+enum ProgramType {
+  GOVERNMENT_SUBSIDY
+  FPO_SCHEME
+  NGO_INITIATIVE
+  SEASONAL_DRIVE
+  EQUIPMENT_MECHANIZATION
+}
+
+enum ProgramStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+enum ProgramCoverageType {
+  STATE
+  DISTRICT
+  MANDAL
+  VILLAGE
+}
+
+enum ProcurementStatus {
+  DRAFT
+  OPEN
+  QUOTED
+  AWARDED
+  IN_PROGRESS
+  FULFILLED
+  CANCELLED
+}
+
+enum SupplierQuoteStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum BuyerType {
+  INSTITUTIONAL
+  AGGREGATOR
+  FOOD_PROCESSOR
+  EXPORTER
+  RETAIL_CHAIN
+}
+
+enum ProduceListingStatus {
+  AVAILABLE
+  PARTIALLY_SOLD
+  SOLD
+  EXPIRED
+  CANCELLED
+}
+
+model Organization {
+  id                  String               @id @default(uuid())
+  name                String               // e.g. "Kalyandurg Farmer Producer Co. Ltd."
+  code                String               @unique // e.g. "FPO-KD-001"
+  type                OrganizationType     @default(FPO)
+  registrationNumber  String?              // CIN/Govt Reg number
+  description         String?
+  primaryContactPhone String?
+  primaryContactEmail String?
+  locationId          String
+  location            Location             @relation(fields: [locationId], references: [id])
+  createdById         String
+  creator             User                 @relation("CreatedOrganizations", fields: [createdById], references: [id])
+  status              String               @default("active") // active, suspended, pending
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  members             OrganizationMember[]
+  farms               OrganizationFarm[]
+  programs            Program[]
+  projects            Project[]
+  procurements        ProcurementRequest[]
+  produceListings     ProduceListing[]
+
+  @@index([type])
+  @@index([locationId])
+  @@index([code])
+}
+
+model OrganizationMember {
+  id             String            @id @default(uuid())
+  organizationId String
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           OrgMembershipRole @default(MEMBER)
+  joinedAt       DateTime          @default(now())
+  status         String            @default("active") // active, inactive, pending_approval
+  permissions    Json?             // Granular RBAC permissions overrides
+
+  @@unique([organizationId, userId])
+  @@index([organizationId])
+  @@index([userId])
+  @@index([role])
+}
+
+model OrganizationFarm {
+  id             String              @id @default(uuid())
+  organizationId String
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  farmId         String
+  farm           Farm                @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  relationship   OrgFarmRelationship @default(MEMBER_FARM)
+  attachedAt     DateTime            @default(now())
+
+  @@unique([organizationId, farmId])
+  @@index([organizationId])
+  @@index([farmId])
+}
+
+model Program {
+  id             String               @id @default(uuid())
+  organizationId String
+  organization   Organization         @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code           String               @unique // e.g. "PRG-TEL-2026-FARM-MECH"
+  name           String               // e.g. "Rythu Bandhu Mechanization & Spraying Drive"
+  description    String?
+  type           ProgramType          @default(GOVERNMENT_SUBSIDY)
+  status         ProgramStatus        @default(ACTIVE)
+  budgetTotal    Float                @default(0.0) // Budget allocation in INR
+  budgetSpent    Float                @default(0.0)
+  subsidyRate    Float                @default(0.0) // percentage e.g. 50.0%
+  startDate      DateTime
+  endDate        DateTime
+  createdById    String
+  creator        User                 @relation("CreatedPrograms", fields: [createdById], references: [id])
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  locations      ProgramLocation[]
+  participants   ProgramParticipant[]
+  projects       Project[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([type])
+}
+
+model ProgramLocation {
+  id           String              @id @default(uuid())
+  programId    String
+  program      Program             @relation(fields: [programId], references: [id], onDelete: Cascade)
+  locationId   String
+  location     Location            @relation(fields: [locationId], references: [id])
+  coverageType ProgramCoverageType @default(MANDAL)
+
+  @@unique([programId, locationId])
+  @@index([programId])
+  @@index([locationId])
+}
+
+model ProgramParticipant {
+  id            String    @id @default(uuid())
+  programId     String
+  program       Program   @relation(fields: [programId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enrolledAt    DateTime  @default(now())
+  subsidyClaimed Float    @default(0.0)
+  status        String    @default("enrolled") // enrolled, approved, rejected, completed
+
+  @@unique([programId, userId])
+  @@index([programId])
+  @@index([userId])
+}
+
+model ProcurementRequest {
+  id              String                   @id @default(uuid())
+  code            String                   @unique // e.g. "PROC-2026-0042"
+  organizationId  String
+  organization    Organization             @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title           String                   // e.g. "Bulk Monsoon Fertilizer Supply (1200 Bags Urea + DAP)"
+  description     String?
+  targetBudget    Float                    @default(0.0)
+  deliveryLocationId String
+  deliveryLocation Location                @relation(fields: [deliveryLocationId], references: [id])
+  status          ProcurementStatus        @default(OPEN)
+  biddingDeadline DateTime
+  createdById     String
+  creator         User                     @relation("CreatedProcurements", fields: [createdById], references: [id])
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  requirements    ProcurementRequirement[]
+  quotes          SupplierQuote[]
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([deliveryLocationId])
+}
+
+model ProcurementRequirement {
+  id            String             @id @default(uuid())
+  procurementId String
+  procurement   ProcurementRequest @relation(fields: [procurementId], references: [id], onDelete: Cascade)
+  itemCategory  String             // "FERTILIZER", "SEED", "PESTICIDE", "EQUIPMENT", "CUSTOM"
+  itemName      String             // "Neem Coated Urea (50kg)"
+  quantity      Float              // 1200
+  unit          String             // "bags", "litres", "units"
+  specifications String?
+
+  @@index([procurementId])
+}
+
+model SupplierQuote {
+  id             String              @id @default(uuid())
+  procurementId  String
+  procurement    ProcurementRequest  @relation(fields: [procurementId], references: [id], onDelete: Cascade)
+  supplierId     String
+  supplier       SupplierProfile     @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  quoteAmount    Float               // Total quote in INR
+  deliveryDays   Int                 @default(3) // Delivery within N days
+  notes          String?
+  status         SupplierQuoteStatus @default(SUBMITTED)
+  validUntil     DateTime
+  submittedAt    DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  @@index([procurementId])
+  @@index([supplierId])
+  @@index([status])
+}
+
+model BuyerProfile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyName        String             // e.g. "Deccan Agri Aggregators Pvt Ltd"
+  buyerType          BuyerType          @default(AGGREGATOR)
+  gstNumber          String?
+  contactPhone       String?
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([buyerType])
+}
+
+model ProduceListing {
+  id             String               @id @default(uuid())
+  code           String               @unique // e.g. "PRD-2026-0089"
+  organizationId String?
+  organization   Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  farmId         String?
+  farm           Farm?                @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  crop           String               // "Cotton (Long Staple)", "Sona Masoori Paddy"
+  quantity       Float                // 50.0
+  unit           String               @default("Quintals")
+  targetPrice    Float                // 7200 INR per Quintal
+  qualityGrade   String?              // "Grade A", "Standard"
+  harvestDate    DateTime?
+  locationId     String
+  location       Location             @relation(fields: [locationId], references: [id])
+  status         ProduceListingStatus @default(AVAILABLE)
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([organizationId])
+  @@index([farmId])
+  @@index([locationId])
+  @@index([crop])
+  @@index([status])
+}
+
 

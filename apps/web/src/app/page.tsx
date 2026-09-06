@@ -31,7 +31,8 @@ import {
   Calendar,
   DollarSign,
   AlertTriangle,
-  Plus
+  Plus,
+  Building2
 } from 'lucide-react';
 
 export type RoleType = 'FARMER' | 'TRACTOR_OWNER' | 'CONTRACTOR' | 'SKILLED_WORKER' | 'SUPPLIER' | 'EQUIPMENT_OWNER';
@@ -459,6 +460,14 @@ export default function FuturisticHome() {
                 <span>{role.label}</span>
               </button>
             ))}
+
+            <Link
+              href="/organization"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500/20 to-cyan-500/20 border border-indigo-500/40 text-cyan-300 font-bold text-xs hover:bg-indigo-500/30 transition shadow-sm ml-1 whitespace-nowrap"
+            >
+              <Building2 className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Institutional Network (FPO/Govt)</span>
+            </Link>
 
             <Link
               href="/ai"
