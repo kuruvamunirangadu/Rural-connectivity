@@ -178,6 +178,9 @@ model Location {
   programLocations     ProgramLocation[]
   procurementRequests  ProcurementRequest[]
   produceListings      ProduceListing[]
+  produceAggregations  ProduceAggregation[]
+  fulfillmentPickups   Fulfillment[]        @relation("FulfillmentPickupLocation")
+  fulfillmentDeliveries Fulfillment[]       @relation("FulfillmentDeliveryLocation")
   vehiclesBased        Vehicle[]            @relation("VehicleBaseLocation")
   transportStops       TransportStop[]
   transportRequestsOrigin TransportRequest[] @relation("PickupLocation")
@@ -242,6 +245,17 @@ model User {
   transportOffersReceived  TransportOffer[]       @relation("ProviderTransportOffers")
   transportBookingsAsCust  TransportBooking[]     @relation("CustomerTransportBookings")
   deliveriesConfirmed      DeliveryConfirmation[] @relation("ConfirmedDeliveries")
+
+  // Agricultural Marketplace & Commerce (Milestone 16)
+  sellerProduceListings    ProduceListing[]       @relation("SellerProduceListings")
+  buyerInterests           BuyerInterest[]        @relation("BuyerInterests")
+  produceOffersMade        ProduceOffer[]         @relation("BuyerProduceOffers")
+  produceOffersReceived    ProduceOffer[]         @relation("SellerProduceOffers")
+  offerRevisions           OfferRevision[]        @relation("UserOfferRevisions")
+  produceOrdersBought      ProduceOrder[]         @relation("BuyerProduceOrders")
+  produceOrdersSold        ProduceOrder[]         @relation("SellerProduceOrders")
+  inspectionsConducted     ProduceInspection[]    @relation("InspectedBy")
+  qualityTestsConducted    ProduceQuality[]       @relation("QualityTestedBy")
 }
 
 model UserRoleEntry {
@@ -876,11 +890,81 @@ enum BuyerType {
 }
 
 enum ProduceListingStatus {
+  DRAFT
   AVAILABLE
-  PARTIALLY_SOLD
+  PARTIALLY_COMMITTED
+  COMMITTED
   SOLD
   EXPIRED
   CANCELLED
+}
+
+enum BuyerInterestStatus {
+  ACTIVE
+  WITHDRAWN
+  RESPONDED
+  EXPIRED
+  CONVERTED
+}
+
+enum ProduceOfferStatus {
+  DRAFT
+  SUBMITTED
+  COUNTERED
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+  EXPIRED
+}
+
+enum ProduceOrderStatus {
+  CONFIRMED
+  FULFILLMENT_PENDING
+  READY_FOR_PICKUP
+  IN_TRANSIT
+  DELIVERED
+  ACCEPTED
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum QualityVerificationTier {
+  SELF_DECLARED
+  SELLER_VERIFIED
+  THIRD_PARTY_VERIFIED
+  BUYER_VERIFIED
+}
+
+enum InspectionType {
+  PRE_ORDER
+  PRE_DISPATCH
+  DELIVERY
+  POST_DELIVERY
+}
+
+enum InspectionStatus {
+  PENDING
+  PASSED
+  FAILED
+  CONDITIONAL
+}
+
+enum FulfillmentStatus {
+  PENDING
+  READY
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum AggregationStatus {
+  DRAFT
+  AVAILABLE
+  COMMITTED
+  SOLD
+  DISBANDED
 }
 
 model Organization {
@@ -906,6 +990,7 @@ model Organization {
   projects            Project[]
   procurements        ProcurementRequest[]
   produceListings     ProduceListing[]
+  produceAggregations ProduceAggregation[]
   vehicles            Vehicle[]
   transportRequests   TransportRequest[]
 
@@ -1066,37 +1151,268 @@ model BuyerProfile {
   buyerType          BuyerType          @default(AGGREGATOR)
   gstNumber          String?
   contactPhone       String?
+  contactEmail       String?
   verificationStatus VerificationStatus @default(UNVERIFIED)
+  tradingVolume      Float              @default(0.0)
+  rating             Float              @default(0.0)
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
   @@index([buyerType])
+  @@index([verificationStatus])
 }
 
 model ProduceListing {
-  id             String               @id @default(uuid())
-  code           String               @unique // e.g. "PRD-2026-0089"
-  organizationId String?
-  organization   Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
-  farmId         String?
-  farm           Farm?                @relation(fields: [farmId], references: [id], onDelete: SetNull)
-  crop           String               // "Cotton (Long Staple)", "Sona Masoori Paddy"
-  quantity       Float                // 50.0
-  unit           String               @default("Quintals")
-  targetPrice    Float                // 7200 INR per Quintal
-  qualityGrade   String?              // "Grade A", "Standard"
-  harvestDate    DateTime?
-  locationId     String
-  location       Location             @relation(fields: [locationId], references: [id])
-  status         ProduceListingStatus @default(AVAILABLE)
-  createdAt      DateTime             @default(now())
-  updatedAt      DateTime             @updatedAt
+  id                  String               @id @default(uuid())
+  code                String               @unique // e.g. "PRD-2026-0089"
+  sellerId            String?
+  seller              User?                @relation("SellerProduceListings", fields: [sellerId], references: [id], onDelete: SetNull)
+  organizationId      String?
+  organization        Organization?        @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  farmId              String?
+  farm                Farm?                @relation(fields: [farmId], references: [id], onDelete: SetNull)
+  cropName            String               // "Cotton", "Paddy", "Red Chilli", "Groundnut"
+  cropVariety         String?              // "Brahma 32mm", "BPT 5204", "Kadiri-6"
+  quantity            Float                // Total listed quantity
+  availableQuantity   Float                // Available for commitment
+  unit                String               @default("Quintals")
+  expectedHarvestDate DateTime?
+  harvestDate         DateTime?
+  qualityGrade        String?              // "Grade A", "Export Quality", "Standard"
+  locationId          String
+  location            Location             @relation(fields: [locationId], references: [id])
+  askingPrice         Float?               // Optional asking price in INR
+  priceUnit           String?              @default("INR/Quintal")
+  description         String?
+  status              ProduceListingStatus @default(AVAILABLE)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
 
+  interests           BuyerInterest[]
+  offers              ProduceOffer[]
+  orderItems          OrderItem[]
+  qualities           ProduceQuality[]
+  aggregationItems    ProduceAggregationItem[]
+
+  @@index([sellerId])
   @@index([organizationId])
   @@index([farmId])
   @@index([locationId])
-  @@index([crop])
+  @@index([cropName])
+  @@index([qualityGrade])
   @@index([status])
+  @@index([askingPrice])
+}
+
+model BuyerInterest {
+  id               String              @id @default(uuid())
+  buyerId          String
+  buyer            User                @relation("BuyerInterests", fields: [buyerId], references: [id], onDelete: Cascade)
+  produceListingId String
+  produceListing   ProduceListing      @relation(fields: [produceListingId], references: [id], onDelete: Cascade)
+  quantity         Float
+  message          String?
+  status           BuyerInterestStatus @default(ACTIVE)
+  expiresAt        DateTime?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@index([buyerId])
+  @@index([produceListingId])
+  @@index([status])
+}
+
+model ProduceOffer {
+  id               String             @id @default(uuid())
+  buyerId          String
+  buyer            User               @relation("BuyerProduceOffers", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId         String
+  seller           User               @relation("SellerProduceOffers", fields: [sellerId], references: [id], onDelete: Cascade)
+  produceListingId String
+  produceListing   ProduceListing     @relation(fields: [produceListingId], references: [id], onDelete: Cascade)
+  quantity         Float
+  unitPrice        Float
+  currency         String             @default("INR")
+  totalAmount      Float
+  message          String?
+  validUntil       DateTime
+  status           ProduceOfferStatus @default(SUBMITTED)
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  revisions        OfferRevision[]
+  order            ProduceOrder?
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([produceListingId])
+  @@index([status])
+}
+
+model OfferRevision {
+  id          String       @id @default(uuid())
+  offerId     String
+  offer       ProduceOffer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User         @relation("UserOfferRevisions", fields: [createdById], references: [id], onDelete: Cascade)
+  quantity    Float
+  unitPrice   Float
+  message     String?
+  createdAt   DateTime     @default(now())
+
+  @@index([offerId])
+  @@index([createdById])
+}
+
+model ProduceOrder {
+  id            String             @id @default(uuid())
+  orderNumber   String             @unique // e.g. "ORD-2026-9021"
+  buyerId       String
+  buyer         User               @relation("BuyerProduceOrders", fields: [buyerId], references: [id], onDelete: Cascade)
+  sellerId      String
+  seller        User               @relation("SellerProduceOrders", fields: [sellerId], references: [id], onDelete: Cascade)
+  offerId       String?            @unique
+  offer         ProduceOffer?      @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  subtotal      Float
+  transportCost Float              @default(0.0)
+  tax           Float              @default(0.0)
+  discount      Float              @default(0.0)
+  total         Float
+  currency      String             @default("INR")
+  status        ProduceOrderStatus @default(CONFIRMED)
+  orderedAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  orderItems    OrderItem[]
+  fulfillments  Fulfillment[]
+  inspections   ProduceInspection[]
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
+}
+
+model OrderItem {
+  id               String         @id @default(uuid())
+  orderId          String
+  order            ProduceOrder   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  produceListingId String
+  produceListing   ProduceListing @relation(fields: [produceListingId], references: [id], onDelete: Cascade)
+  quantity         Float
+  unit             String         @default("Quintals")
+  unitPrice        Float
+  totalAmount      Float
+
+  @@index([orderId])
+  @@index([produceListingId])
+}
+
+model ProduceQuality {
+  id               String                  @id @default(uuid())
+  produceListingId String
+  produceListing   ProduceListing          @relation(fields: [produceListingId], references: [id], onDelete: Cascade)
+  grade            String                  // "Grade A", "Export Quality"
+  verificationTier QualityVerificationTier @default(SELF_DECLARED)
+  testedAt         DateTime?
+  testedById       String?
+  testedBy         User?                   @relation("QualityTestedBy", fields: [testedById], references: [id], onDelete: SetNull)
+  notes            String?
+  createdAt        DateTime                @default(now())
+
+  attributes       QualityAttribute[]
+
+  @@index([produceListingId])
+  @@index([verificationTier])
+}
+
+model QualityAttribute {
+  id               String         @id @default(uuid())
+  produceQualityId String
+  produceQuality   ProduceQuality @relation(fields: [produceQualityId], references: [id], onDelete: Cascade)
+  attribute        String         // "Moisture", "Foreign Matter", "Staple Length", "Oil Content"
+  value            String         // "7.5", "1.2", "32mm", "44%"
+  unit             String?        // "%", "mm"
+
+  @@index([produceQualityId])
+}
+
+model ProduceInspection {
+  id            String            @id @default(uuid())
+  orderId       String
+  order         ProduceOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  inspectedById String
+  inspectedBy   User              @relation("InspectedBy", fields: [inspectedById], references: [id], onDelete: Cascade)
+  inspectionType InspectionType   @default(PRE_DISPATCH)
+  status        InspectionStatus  @default(PENDING)
+  notes         String?
+  inspectedAt   DateTime          @default(now())
+
+  @@index([orderId])
+  @@index([inspectedById])
+  @@index([status])
+}
+
+model Fulfillment {
+  id                 String            @id @default(uuid())
+  orderId            String
+  order              ProduceOrder      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  pickupLocationId   String
+  pickupLocation     Location          @relation("FulfillmentPickupLocation", fields: [pickupLocationId], references: [id])
+  deliveryLocationId String
+  deliveryLocation   Location          @relation("FulfillmentDeliveryLocation", fields: [deliveryLocationId], references: [id])
+  plannedPickupDate  DateTime?
+  plannedDeliveryDate DateTime?
+  quantity           Float
+  unit               String            @default("Quintals")
+  status             FulfillmentStatus @default(PENDING)
+  transportRequestId String?
+  transportRequest   TransportRequest? @relation(fields: [transportRequestId], references: [id], onDelete: SetNull)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  @@index([orderId])
+  @@index([transportRequestId])
+  @@index([status])
+  @@index([pickupLocationId])
+  @@index([deliveryLocationId])
+}
+
+model ProduceAggregation {
+  id                String             @id @default(uuid())
+  code              String             @unique // e.g. "AGG-2026-COT-01"
+  organizationId    String
+  organization      Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  cropName          String             // "Cotton (Long Staple)"
+  cropVariety       String?            // "Brahma 32mm"
+  totalQuantity     Float              // Sum of attached listings
+  availableQuantity Float
+  unit              String             @default("Quintals")
+  qualityGrade      String?            // "Grade A"
+  locationId        String
+  location          Location           @relation(fields: [locationId], references: [id])
+  status            AggregationStatus  @default(AVAILABLE)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  items             ProduceAggregationItem[]
+
+  @@index([organizationId])
+  @@index([locationId])
+  @@index([cropName])
+  @@index([status])
+}
+
+model ProduceAggregationItem {
+  id               String             @id @default(uuid())
+  aggregationId    String
+  aggregation      ProduceAggregation @relation(fields: [aggregationId], references: [id], onDelete: Cascade)
+  produceListingId String
+  produceListing   ProduceListing     @relation(fields: [produceListingId], references: [id], onDelete: Cascade)
+  quantity         Float
+  attachedAt       DateTime           @default(now())
+
+  @@index([aggregationId])
+  @@index([produceListingId])
 }
 
 // ----------------------------------------------------
@@ -1275,6 +1591,7 @@ model TransportRequest {
   stops              TransportStop[]
   offers             TransportOffer[]
   bookings           TransportBooking[]
+  fulfillments       Fulfillment[]
 
   @@index([createdById])
   @@index([organizationId])

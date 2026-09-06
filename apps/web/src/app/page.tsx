@@ -33,7 +33,8 @@ import {
   AlertTriangle,
   Plus,
   Building2,
-  Truck
+  Truck,
+  ShoppingBag
 } from 'lucide-react';
 
 export type RoleType = 'FARMER' | 'TRACTOR_OWNER' | 'CONTRACTOR' | 'SKILLED_WORKER' | 'SUPPLIER' | 'EQUIPMENT_OWNER';
@@ -476,6 +477,14 @@ export default function FuturisticHome() {
             >
               <Truck className="w-3.5 h-3.5 text-amber-400" />
               <span>Logistics & Transport Grid</span>
+            </Link>
+
+            <Link
+              href="/marketplace"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 text-emerald-300 font-bold text-xs hover:bg-emerald-500/30 transition shadow-sm ml-1 whitespace-nowrap"
+            >
+              <ShoppingBag className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Agri-Marketplace B2B</span>
             </Link>
 
             <Link

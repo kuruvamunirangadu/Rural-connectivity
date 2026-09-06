@@ -40,6 +40,7 @@ import { ProgramModule } from './programs/program.module';
 import { ProcurementModule } from './procurement/procurement.module';
 import { BuyerModule } from './buyers/buyer.module';
 import { LogisticsModule } from './logistics/logistics.module';
+import { MarketplaceModule } from './marketplace/marketplace.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { LogisticsModule } from './logistics/logistics.module';
     ProcurementModule,
     BuyerModule,
     LogisticsModule,
+    MarketplaceModule,
     AuthModule,
     UsersModule,
     FarmersModule,
