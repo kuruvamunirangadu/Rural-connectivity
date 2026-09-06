@@ -32,7 +32,8 @@ import {
   DollarSign,
   AlertTriangle,
   Plus,
-  Building2
+  Building2,
+  Truck
 } from 'lucide-react';
 
 export type RoleType = 'FARMER' | 'TRACTOR_OWNER' | 'CONTRACTOR' | 'SKILLED_WORKER' | 'SUPPLIER' | 'EQUIPMENT_OWNER';
@@ -467,6 +468,14 @@ export default function FuturisticHome() {
             >
               <Building2 className="w-3.5 h-3.5 text-cyan-400" />
               <span>Institutional Network (FPO/Govt)</span>
+            </Link>
+
+            <Link
+              href="/logistics"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/40 text-amber-300 font-bold text-xs hover:bg-amber-500/30 transition shadow-sm ml-1 whitespace-nowrap"
+            >
+              <Truck className="w-3.5 h-3.5 text-amber-400" />
+              <span>Logistics & Transport Grid</span>
             </Link>
 
             <Link

@@ -31,6 +31,8 @@ enum RoleType {
   NGO
   INSTITUTION
   FIELD_OFFICER
+  TRANSPORT_PROVIDER
+  LOGISTICS_OPERATOR
 }
 
 enum VerificationStatus {
@@ -176,6 +178,10 @@ model Location {
   programLocations     ProgramLocation[]
   procurementRequests  ProcurementRequest[]
   produceListings      ProduceListing[]
+  vehiclesBased        Vehicle[]            @relation("VehicleBaseLocation")
+  transportStops       TransportStop[]
+  transportRequestsOrigin TransportRequest[] @relation("PickupLocation")
+  transportRequestsDest   TransportRequest[] @relation("DeliveryLocation")
 
   @@index([district, mandal, village])
   @@index([latitude, longitude])
@@ -228,6 +234,14 @@ model User {
   programParticipations   ProgramParticipant[]
   createdProcurements     ProcurementRequest[] @relation("CreatedProcurements")
   buyerProfile            BuyerProfile?
+
+  // Logistics & Supply Chain (Milestone 15)
+  driverProfile            DriverProfile?
+  vehiclesOwned            Vehicle[]              @relation("OwnedVehicles")
+  transportRequestsCreated TransportRequest[]     @relation("CustomerTransportRequests")
+  transportOffersReceived  TransportOffer[]       @relation("ProviderTransportOffers")
+  transportBookingsAsCust  TransportBooking[]     @relation("CustomerTransportBookings")
+  deliveriesConfirmed      DeliveryConfirmation[] @relation("ConfirmedDeliveries")
 }
 
 model UserRoleEntry {
@@ -892,6 +906,8 @@ model Organization {
   projects            Project[]
   procurements        ProcurementRequest[]
   produceListings     ProduceListing[]
+  vehicles            Vehicle[]
+  transportRequests   TransportRequest[]
 
   @@index([type])
   @@index([locationId])
@@ -1082,5 +1098,318 @@ model ProduceListing {
   @@index([crop])
   @@index([status])
 }
+
+// ----------------------------------------------------
+// 15. Logistics, Transportation & Agricultural Supply Chain (Milestone 15)
+// ----------------------------------------------------
+
+enum VehicleType {
+  TRACTOR
+  TRACTOR_TRAILER
+  MINI_TRUCK
+  TRUCK
+  PICKUP
+  TANKER
+  TEMPO
+  OTHER
+}
+
+enum VehicleStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+  SUSPENDED
+}
+
+enum DriverStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum TransportRequestType {
+  INPUT_DELIVERY
+  PRODUCE_TRANSPORT
+  EQUIPMENT_TRANSPORT
+  WATER_TRANSPORT
+  PERSON_TRANSPORT
+  GENERAL_CARGO
+  OTHER
+}
+
+enum TransportStopType {
+  PICKUP
+  DELIVERY
+  WAYPOINT
+}
+
+enum TransportOfferStatus {
+  OFFERED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CANCELLED
+}
+
+enum TransportBookingStatus {
+  CONFIRMED
+  DRIVER_ASSIGNED
+  VEHICLE_ASSIGNED
+  READY
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum TripStatus {
+  PLANNED
+  STARTED
+  IN_TRANSIT
+  COMPLETED
+  CANCELLED
+}
+
+enum DeliveryEvidenceType {
+  PHOTO
+  DOCUMENT
+  SIGNATURE
+  OTP
+}
+
+model Vehicle {
+  id                 String             @id @default(uuid())
+  ownerId            String
+  owner              User               @relation("OwnedVehicles", fields: [ownerId], references: [id], onDelete: Cascade)
+  organizationId     String?
+  organization       Organization?      @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  vehicleType        VehicleType        @default(MINI_TRUCK)
+  registrationNumber String             @unique // e.g. "TS-08-UB-4821"
+  brand              String             // e.g. "Mahindra", "Eicher", "Tata"
+  model              String             // e.g. "Bolero Maxi Truck", "Pro 2049", "575 DI + 5T Trailer"
+  manufacturingYear  Int?
+  capacity           Float              // Maximum payload capacity
+  capacityUnit       String             @default("kg") // "kg", "quintals", "tonnes", "litres"
+  condition          String             @default("good")
+  status             VehicleStatus      @default(ACTIVE)
+  baseLocationId     String
+  baseLocation       Location           @relation("VehicleBaseLocation", fields: [baseLocationId], references: [id])
+  serviceRadiusKm    Float              @default(35.0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  vehicleDrivers     VehicleDriver[]
+  transportOffers    TransportOffer[]
+  transportBookings  TransportBooking[]
+
+  @@index([ownerId])
+  @@index([organizationId])
+  @@index([vehicleType])
+  @@index([status])
+  @@index([baseLocationId])
+}
+
+model DriverProfile {
+  id                 String             @id @default(uuid())
+  userId             String             @unique
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  licenseType        String             // "LMV_COMMERCIAL", "HMV_HEAVY", "TRACTOR_TRAILER"
+  licenseNumber      String             @unique // e.g. "DL-TS-2024-884912"
+  licenseExpiry      DateTime
+  experienceYears    Int                @default(0)
+  serviceRadiusKm    Float              @default(30.0)
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  rating             Float              @default(0.0)
+  status             DriverStatus       @default(ACTIVE)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  vehicleDrivers     VehicleDriver[]
+  transportOffers    TransportOffer[]
+  transportBookings  TransportBooking[]
+
+  @@index([licenseType])
+  @@index([status])
+  @@index([verificationStatus])
+}
+
+model VehicleDriver {
+  id          String        @id @default(uuid())
+  vehicleId   String
+  vehicle     Vehicle       @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driverId    String
+  driver      DriverProfile @relation(fields: [driverId], references: [id], onDelete: Cascade)
+  isPrimary   Boolean       @default(true)
+  validFrom   DateTime      @default(now())
+  validUntil  DateTime?
+  createdAt   DateTime      @default(now())
+
+  @@unique([vehicleId, driverId])
+  @@index([vehicleId])
+  @@index([driverId])
+}
+
+model TransportRequest {
+  id                 String                 @id @default(uuid())
+  code               String                 @unique // e.g. "TRQ-2026-0001"
+  createdById        String
+  creator            User                   @relation("CustomerTransportRequests", fields: [createdById], references: [id], onDelete: Cascade)
+  organizationId     String?
+  organization       Organization?          @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  requestType        TransportRequestType   @default(PRODUCE_TRANSPORT)
+  pickupLocationId   String
+  pickupLocation     Location               @relation("PickupLocation", fields: [pickupLocationId], references: [id])
+  deliveryLocationId String
+  deliveryLocation   Location               @relation("DeliveryLocation", fields: [deliveryLocationId], references: [id])
+  requestedDate      DateTime
+  pickupStartTime    String                 @default("07:00")
+  pickupEndTime      String                 @default("17:00")
+  description        String?
+  status             String                 @default("OPEN") // OPEN, MATCHED, IN_TRANSIT, DELIVERED, CANCELLED
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  requirements       TransportRequirement[]
+  stops              TransportStop[]
+  offers             TransportOffer[]
+  bookings           TransportBooking[]
+
+  @@index([createdById])
+  @@index([organizationId])
+  @@index([requestType])
+  @@index([status])
+  @@index([pickupLocationId])
+  @@index([deliveryLocationId])
+}
+
+model TransportRequirement {
+  id                      String           @id @default(uuid())
+  transportRequestId      String
+  transportRequest        TransportRequest @relation(fields: [transportRequestId], references: [id], onDelete: Cascade)
+  cargoType               String           // "Cotton", "Neem Urea Bags", "Paddy", "Spraying Equipment", "Water"
+  quantity                Float            // e.g. 5000.0
+  unit                    String           @default("kg") // "kg", "quintals", "bags", "litres"
+  vehicleType             VehicleType      @default(TRUCK)
+  minimumCapacity         Float            // e.g. 6000.0
+  requiredVehicleFeatures String?          // "Tarpaulin Covered", "Drop Side", "High Suspension"
+  specialInstructions     String?
+
+  @@index([transportRequestId])
+}
+
+model TransportStop {
+  id                 String            @id @default(uuid())
+  transportRequestId String
+  transportRequest   TransportRequest  @relation(fields: [transportRequestId], references: [id], onDelete: Cascade)
+  sequence           Int               @default(1)
+  stopType           TransportStopType @default(PICKUP)
+  locationId         String
+  location           Location          @relation(fields: [locationId], references: [id])
+  plannedArrival     DateTime?
+  plannedDeparture   DateTime?
+  actualArrival      DateTime?
+  actualDeparture    DateTime?
+  status             String            @default("PLANNED") // PLANNED, ARRIVED, DEPARTED, SKIPPED
+
+  @@index([transportRequestId])
+  @@index([locationId])
+}
+
+model TransportOffer {
+  id                 String               @id @default(uuid())
+  transportRequestId String
+  transportRequest   TransportRequest     @relation(fields: [transportRequestId], references: [id], onDelete: Cascade)
+  providerId         String
+  provider           User                 @relation("ProviderTransportOffers", fields: [providerId], references: [id], onDelete: Cascade)
+  vehicleId          String
+  vehicle            Vehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  driverId           String?
+  driver             DriverProfile?       @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  price              Float                // Total offered transportation price in INR
+  currency           String               @default("INR")
+  message            String?
+  expiresAt          DateTime
+  status             TransportOfferStatus @default(OFFERED)
+  submittedAt        DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  booking            TransportBooking?
+
+  @@index([transportRequestId])
+  @@index([providerId])
+  @@index([vehicleId])
+  @@index([driverId])
+  @@index([status])
+}
+
+model TransportBooking {
+  id                 String                 @id @default(uuid())
+  referenceCode      String                 @unique // e.g. "TBK-2026-0001"
+  transportRequestId String
+  transportRequest   TransportRequest       @relation(fields: [transportRequestId], references: [id], onDelete: Cascade)
+  offerId            String?                @unique
+  offer              TransportOffer?        @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  customerId         String
+  customer           User                   @relation("CustomerTransportBookings", fields: [customerId], references: [id], onDelete: Cascade)
+  providerId         String                 // Provider User ID
+  vehicleId          String
+  vehicle            Vehicle                @relation(fields: [vehicleId], references: [id])
+  driverId           String?
+  driver             DriverProfile?         @relation(fields: [driverId], references: [id], onDelete: SetNull)
+  priceQuoteId       String?
+  status             TransportBookingStatus @default(CONFIRMED)
+  scheduledAt        DateTime
+  agreedPrice        Float                  // Total agreed trip cost in INR
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+
+  trips              Trip[]
+
+  @@index([transportRequestId])
+  @@index([customerId])
+  @@index([providerId])
+  @@index([vehicleId])
+  @@index([status])
+}
+
+model Trip {
+  id                    String                 @id @default(uuid())
+  transportBookingId    String
+  transportBooking      TransportBooking       @relation(fields: [transportBookingId], references: [id], onDelete: Cascade)
+  startedAt             DateTime               @default(now())
+  completedAt           DateTime?
+  actualDistanceKm      Float?
+  actualDurationMinutes Int?
+  status                TripStatus             @default(PLANNED)
+  notes                 String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  deliveryConfirmations DeliveryConfirmation[]
+
+  @@index([transportBookingId])
+  @@index([status])
+}
+
+model DeliveryConfirmation {
+  id                String               @id @default(uuid())
+  tripId            String
+  trip              Trip                 @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  confirmedById     String
+  confirmedBy       User                 @relation("ConfirmedDeliveries", fields: [confirmedById], references: [id], onDelete: Cascade)
+  confirmedAt       DateTime             @default(now())
+  quantityDelivered Float                // Actual received quantity
+  unit              String               @default("kg")
+  evidenceType      DeliveryEvidenceType @default(OTP)
+  evidenceData      String?              // Photo URL, document hash, or signature string
+  otpCode           String?              // 4-digit verification OTP
+  notes             String?
+
+  @@index([tripId])
+  @@index([confirmedById])
+}
+
 
 
