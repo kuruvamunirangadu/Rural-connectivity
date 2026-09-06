@@ -10,3 +10,4 @@ import { OrganizationController } from './organization.controller';
   exports: [OrganizationService, OrganizationMemberService, OrganizationPermissionService],
 })
 export class OrganizationModule {}
+

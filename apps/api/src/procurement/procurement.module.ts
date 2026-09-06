@@ -9,3 +9,4 @@ import { ProcurementController } from './procurement.controller';
   exports: [ProcurementService, SupplierQuoteService],
 })
 export class ProcurementModule {}
+

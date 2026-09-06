@@ -9,3 +9,4 @@ import { BuyerController } from './buyer.controller';
   exports: [BuyerService, ProduceListingService],
 })
 export class BuyerModule {}
+
