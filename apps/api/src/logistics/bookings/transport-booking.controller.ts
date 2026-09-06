@@ -35,3 +35,4 @@ export class TransportBookingController {
     return this.bookingService.transitionStatus(id, status);
   }
 }
+

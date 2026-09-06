@@ -48,3 +48,4 @@ export class VehicleController {
     return this.vehicleService.assignDriver(id, body.driverId, body.driverName);
   }
 }
+

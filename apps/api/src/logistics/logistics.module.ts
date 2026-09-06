@@ -51,3 +51,4 @@ import { TrackingService } from './tracking/tracking.service';
   ],
 })
 export class LogisticsModule {}
+
