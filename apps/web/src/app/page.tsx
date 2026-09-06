@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   Radar,
   Cpu,
@@ -458,6 +459,14 @@ export default function FuturisticHome() {
                 <span>{role.label}</span>
               </button>
             ))}
+
+            <Link
+              href="/ai"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500/20 to-teal-500/20 border border-emerald-500/40 text-emerald-300 font-bold text-xs hover:bg-emerald-500/30 transition shadow-sm ml-1 whitespace-nowrap"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              <span>AI Intelligence Hub</span>
+            </Link>
           </div>
         </div>
 
